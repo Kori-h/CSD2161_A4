@@ -2,7 +2,7 @@
 
 // Define
 NetworkType networkType = NetworkType::UNINITIALISED;
-sockaddr_in serverAddress;
+sockaddr_in targetAddress;
 uint16_t port;
 SOCKET udpSocket;
 
@@ -39,7 +39,7 @@ int InitialiseNetwork()
 	}
 	else
 	{
-		networkType = NetworkType::UNINITIALISED;
+		networkType = NetworkType::SINGLE_PLAYER;
 		std::cout << "Initialising as Single Player..." << std::endl;
 		return 0;
 	}
@@ -63,51 +63,59 @@ int StartServer()
 		return ERROR_CODE;
 	}
 
-	// Create a UDP Socket
-	udpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	// Setup UDP hints
+	addrinfo udpHints{};
+	SecureZeroMemory(&udpHints, sizeof(udpHints));
+	udpHints.ai_family = AF_INET;        // IPv4
+	udpHints.ai_socktype = SOCK_DGRAM;   // Datagram (unreliable)
+	udpHints.ai_protocol = IPPROTO_UDP;  // UDP
+
+	addrinfo* udpInfo = nullptr;
+	if (getaddrinfo(nullptr, portString.c_str(), &udpHints, &udpInfo) != 0)
+	{
+		std::cerr << "getaddrinfo() failed. Error: " << WSAGetLastError() << std::endl;
+		WSACleanup();
+		return ERROR_CODE;
+	}
+
+	// Create a UDP socket
+	udpSocket = socket(udpInfo->ai_family, udpInfo->ai_socktype, udpInfo->ai_protocol);
 	if (udpSocket == INVALID_SOCKET)
 	{
 		std::cerr << "socket() failed." << std::endl;
+		freeaddrinfo(udpInfo);
 		WSACleanup();
 		return ERROR_CODE;
 	}
 
-	// Initialise server address structure
-	memset(&serverAddress, 0, sizeof(serverAddress));
-	serverAddress.sin_family = AF_INET;
-	serverAddress.sin_port = htons(port);
-	serverAddress.sin_addr.s_addr = INADDR_ANY;  // Bind to all available interfaces
+	// Create a sockaddr_in for binding
+	sockaddr_in bindAddress{};
+	bindAddress.sin_family = AF_INET;
+	bindAddress.sin_port = htons(port);
+	bindAddress.sin_addr.s_addr = INADDR_ANY;
 
-	// Bind the Socket to the port
-	if (bind(udpSocket, (sockaddr*)&serverAddress, sizeof(serverAddress)) == SOCKET_ERROR)
+	if (bind(udpSocket, (sockaddr*)&bindAddress, sizeof(bindAddress)) == SOCKET_ERROR)
 	{
-		std::cerr << "bind() failed with error code " << WSAGetLastError() << std::endl;
+		std::cerr << "bind() failed." << std::endl;
 		closesocket(udpSocket);
+		freeaddrinfo(udpInfo);
 		WSACleanup();
 		return ERROR_CODE;
 	}
 
-	// Get local IP address
-	char ipAddressBuffer[INET_ADDRSTRLEN];
-	struct sockaddr_in localAddress;
-	socklen_t addrLength = sizeof(localAddress);
-	if (getsockname(udpSocket, (sockaddr*)&localAddress, &addrLength) == SOCKET_ERROR)
-	{
-		std::cerr << "getsockname() failed with error code " << WSAGetLastError() << std::endl;
-		closesocket(udpSocket);
-		WSACleanup();
-		return ERROR_CODE;
-	}
+	// Print server IP address and port number
+	char serverIPAddress[DEFAULT_BUFLEN];
+	struct sockaddr_in* address = reinterpret_cast<struct sockaddr_in*> (udpInfo->ai_addr);
+	inet_ntop(AF_INET, &(address->sin_addr), serverIPAddress, INET_ADDRSTRLEN);
+	getnameinfo(udpInfo->ai_addr, static_cast <socklen_t>(udpInfo->ai_addrlen), serverIPAddress, sizeof(serverIPAddress), nullptr, 0, NI_NUMERICHOST);
+	
+	std::cout << std::endl;
+	std::cout << "Server has been established" << std::endl;
+	std::cout << "Server IP Address: " << serverIPAddress << std::endl;
+	std::cout << "Server UDP Port Number: " << port << std::endl;
+	std::cout << std::endl;
 
-	if (inet_ntop(AF_INET, &localAddress.sin_addr, ipAddressBuffer, INET_ADDRSTRLEN) == nullptr)
-	{
-		std::cerr << "inet_ntop() failed." << std::endl;
-		closesocket(udpSocket);
-		WSACleanup();
-		return ERROR_CODE;
-	}
-
-	std::cout << "Server established at " << ipAddressBuffer << ":" << port << std::endl;
+	freeaddrinfo(udpInfo);
 
 	return 0;
 }
@@ -139,23 +147,23 @@ int ConnectToServer()
 		return ERROR_CODE;
 	}
 
-	// Resolve server address using getaddrinfo
-	addrinfo addressHints{};
-	SecureZeroMemory(&addressHints, sizeof(addressHints));
-	addressHints.ai_family = AF_INET;        // IPv4
-	addressHints.ai_socktype = SOCK_DGRAM;   // Datagram (unreliable)
-	addressHints.ai_protocol = IPPROTO_UDP;  // UDP
+	// Setup UDP hints
+	addrinfo udpHints{};
+	SecureZeroMemory(&udpHints, sizeof(udpHints));
+	udpHints.ai_family = AF_INET;        // IPv4
+	udpHints.ai_socktype = SOCK_DGRAM;   // Datagram (unreliable)
+	udpHints.ai_protocol = IPPROTO_UDP;  // UDP
 
-	addrinfo* addressInfo = nullptr;
-	if (getaddrinfo(serverIPAddress.c_str(), serverPortString.c_str(), &addressHints, &addressInfo) != 0)
+	addrinfo* udpInfo = nullptr;
+	if (getaddrinfo(serverIPAddress.c_str(), serverPortString.c_str(), &udpHints, &udpInfo) != 0)
 	{
-		std::cerr << "getaddrinfo() failed." << std::endl;
+		std::cerr << "getaddrinfo() failed. Error: " << WSAGetLastError() << std::endl;
 		WSACleanup();
 		return ERROR_CODE;
 	}
 
 	// Create a UDP Socket
-	udpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	udpSocket = socket(udpInfo->ai_family, udpInfo->ai_socktype, udpInfo->ai_protocol);
 	if (udpSocket == INVALID_SOCKET)
 	{
 		std::cerr << "socket() failed." << std::endl;
@@ -163,31 +171,18 @@ int ConnectToServer()
 		return ERROR_CODE;
 	}
 
-	// Initialise client address structure
-	sockaddr_in clientAddress;
-	memset(&clientAddress, 0, sizeof(clientAddress));
-	clientAddress.sin_family = AF_INET;
-	clientAddress.sin_port = htons(port);
-	clientAddress.sin_addr.s_addr = INADDR_ANY;
+	// Store target address
+	targetAddress = *(reinterpret_cast<sockaddr_in*>(udpInfo->ai_addr));
 
-	// Bind the Socket to the port
-	if (bind(udpSocket, (sockaddr*)&clientAddress, sizeof(clientAddress)) == SOCKET_ERROR)
-	{
-		std::cerr << "bind() failed with error code " << WSAGetLastError() << std::endl;
-		closesocket(udpSocket);
-		WSACleanup();
-		return ERROR_CODE;
-	}
+	// Print server IP address and port number
+	std::cout << std::endl;
+	std::cout << "Client has been established" << std::endl;
+	std::cout << "Server IP Address: " << serverIPAddress << std::endl;
+	std::cout << "Server UDP Port Number: " << serverPort << std::endl;
+	std::cout << "Client UDP Port Number: " << port << std::endl;
+	std::cout << std::endl;
 
-	// Initialize server address structure
-	memset(&serverAddress, 0, sizeof(serverAddress));
-	serverAddress.sin_family = AF_INET;
-	serverAddress.sin_port = htons(serverPort);
-	serverAddress.sin_addr.s_addr = ((struct sockaddr_in*)addressInfo->ai_addr)->sin_addr.s_addr;
-
-	// Connection successful
-	std::cout << "Connected to server at " << serverIPAddress << ":" << serverPort << std::endl;
-	freeaddrinfo(addressInfo);
+	freeaddrinfo(udpInfo);
 
 	return 0;
 }
@@ -209,7 +204,7 @@ void SendPacket(SOCKET socket, sockaddr_in address, NetworkPacket packet)
 	}
 }
 
-NetworkPacket ReceivePacket(SOCKET socket, sockaddr_in address)
+NetworkPacket ReceivePacket(SOCKET socket, sockaddr_in& address)
 {
 	NetworkPacket packet;
 
@@ -271,6 +266,15 @@ void HandlePlayerInput(SOCKET socket, sockaddr_in address, NetworkPacket packet)
 
 		SendPacket(socket, address, responsePacket);
 	}
+}
+
+void SendGameStateStart(SOCKET socket, sockaddr_in address)
+{
+	NetworkPacket packet;
+	packet.packetID = PacketID::GAME_STATE_START;
+	packet.sourcePortNumber = port;
+	packet.destinationPortNumber = address.sin_port;
+	SendPacket(socket, address, packet);
 }
 
 void ReceiveGameStateStart(SOCKET socket) 

@@ -37,6 +37,7 @@
 enum class NetworkType 
 {
     UNINITIALISED,
+    SINGLE_PLAYER,
     CLIENT,
     SERVER
 };
@@ -60,7 +61,7 @@ struct NetworkPacket
 
 // Global variables
 extern NetworkType networkType;
-extern sockaddr_in serverAddress;
+extern sockaddr_in targetAddress;
 extern uint16_t port;
 extern SOCKET udpSocket;
 
@@ -73,11 +74,15 @@ int ConnectToServer();
 void Disconnect();
 
 void SendPacket(SOCKET socket, sockaddr_in address, NetworkPacket packet);
-NetworkPacket ReceivePacket(SOCKET socket, sockaddr_in address);
+NetworkPacket ReceivePacket(SOCKET socket, sockaddr_in& address);
+
 void SendJoinRequest(SOCKET socket, sockaddr_in address);
 void HandleJoinRequest(SOCKET socket, sockaddr_in address, NetworkPacket packet);
+
 void SendInput(SOCKET socket, sockaddr_in address);
 void HandlePlayerInput(SOCKET socket, sockaddr_in address, NetworkPacket packet);
+
+void SendGameStateStart(SOCKET socket, sockaddr_in address);
 void ReceiveGameStateStart(SOCKET socket);
 
 #endif
