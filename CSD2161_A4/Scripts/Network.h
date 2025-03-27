@@ -19,23 +19,19 @@
 #include <optional>			// optional
 #include <filesystem>		// file system
 #include <fstream>			// file stream
-#include <unordered_map>	// unordered_map
+#include <map>	            // map
 #include <mutex>			// mutex
 
 #undef WINSOCK_VERSION		// fix for macro redefinition
 #define WINSOCK_VERSION     2
 #define WINSOCK_SUBVERSION  2
-#define MAX_STR_LEN         1000
-#define RETURN_CODE_1       1
-#define RETURN_CODE_2       2
-#define RETURN_CODE_3       3
-#define RETURN_CODE_4       4
+
+#define ERROR_CODE          -1
 
 #define MAX_WORKER_COUNT	10
 #define MAX_QUEUE_SLOTS		20
 
 #define DEFAULT_BUFLEN		4096
-
 #define TIMEOUT_MS		    1000
 
 enum class NetworkType 
@@ -45,12 +41,43 @@ enum class NetworkType
     SERVER
 };
 
+enum PacketID 
+{
+    JOIN_REQUEST,
+    REQUEST_ACCEPTED,
+    GAME_INPUT,
+    GAME_STATE_START,
+    GAME_STATE_UPDATE
+};
+
+struct NetworkPacket
+{
+    uint16_t packetID;
+    uint16_t sourcePortNumber;
+    uint16_t destinationPortNumber;
+    char data[DEFAULT_BUFLEN];
+};
+
+// Global variables
 extern NetworkType networkType;
+extern sockaddr_in serverAddress;
+extern uint16_t port;
+extern SOCKET udpSocket;
+
+void AttachConsoleWindow();
+void FreeConsoleWindow();
 
 int InitialiseNetwork();
-
 int StartServer();
-
 int ConnectToServer();
+void Disconnect();
+
+void SendPacket(SOCKET socket, sockaddr_in address, NetworkPacket packet);
+NetworkPacket ReceivePacket(SOCKET socket, sockaddr_in address);
+void SendJoinRequest(SOCKET socket, sockaddr_in address);
+void HandleJoinRequest(SOCKET socket, sockaddr_in address, NetworkPacket packet);
+void SendInput(SOCKET socket, sockaddr_in address);
+void HandlePlayerInput(SOCKET socket, sockaddr_in address, NetworkPacket packet);
+void ReceiveGameStateStart(SOCKET socket);
 
 #endif
