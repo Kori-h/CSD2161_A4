@@ -1,0 +1,7 @@
+*.vs
+*x64
+*.filters
+*.user
+*.bin
+*.tmp
+.tmp
